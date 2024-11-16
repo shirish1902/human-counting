@@ -1,65 +1,40 @@
 import streamlit as st
-import os
 import cv2
-from ultralytics import YOLO
+import numpy as np
 from PIL import Image
-import tempfile
 
-# Define YOLO model globally for reuse
-model = YOLO('yolov8n-pose.pt')
+# Streamlit App
+st.title("Webcam Image Capture")
 
-# Define functions
-def process_image_or_folder(input_path):
-    if os.path.isfile(input_path):  # Single file
-        model.predict(source=input_path, save=True, imgsz=320, conf=0.5)
-        st.success("Processing complete for the file.")
-    elif os.path.isdir(input_path):  # Directory
-        for filename in os.listdir(input_path):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-                filepath = os.path.join(input_path, filename)
-                model.predict(source=filepath, save=True, imgsz=320, conf=0.5)
-        st.success("Processing complete for all images in the folder.")
-    else:
-        st.error(f"Error: Invalid path '{input_path}'. Please provide a valid file or folder path.")
+# Webcam feed
+camera = cv2.VideoCapture(0)  # 0 for the default camera
+stframe = st.empty()  # Placeholder for the video feed
 
-def process_video():
-    video_path = 0  # Default to camera
-    cap = cv2.VideoCapture(video_path)
-    stframe = st.empty()  # Placeholder for displaying frames in Streamlit
-    while cap.isOpened():
-        success, frame = cap.read()
-        if success:
-            results = model(frame)  # Inference without saving
-            annotated_frame = results[0].plot()
-            stframe.image(annotated_frame, channels="BGR")  # Display the frame
-        else:
-            break
-    cap.release()
+# Placeholder to store captured image
+captured_image = None
 
-# Streamlit UI
-st.title("YOLOv8 Pose Estimation App")
+while True:
+    ret, frame = camera.read()
+    if not ret:
+        st.error("Unable to access the camera.")
+        break
 
-choice = st.radio("Choose an option:", ["Code 1 - Image/Folder Processing", "Code 2 - Real-time Video"])
+    # Convert BGR to RGB for display in Streamlit
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    stframe.image(frame_rgb, caption="Live Camera Feed", channels="RGB")
 
-if choice == "Code 1 - Image/Folder Processing":
-    uploaded_file = st.file_uploader("Upload an image or zip containing images", type=["png", "jpg", "jpeg", "bmp", "zip"])
-    if uploaded_file is not None:
-        if uploaded_file.name.endswith(".zip"):
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_zip_path = os.path.join(temp_dir, uploaded_file.name)
-                with open(temp_zip_path, "wb") as f:
-                    f.write(uploaded_file.read())
-                st.info(f"Unzipping {uploaded_file.name}...")
-                import zipfile
-                with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-                process_image_or_folder(temp_dir)
-        else:
-            temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-            with open(temp_path, "wb") as f:
-                f.write(uploaded_file.read())
-            process_image_or_folder(temp_path)
+    # Button to capture the image
+    if st.button("Capture Image"):
+        captured_image = frame_rgb
+        break
 
-elif choice == "Code 2 - Real-time Video":
-    if st.button("Start Camera"):
-        process_video()
+camera.release()
+
+if captured_image is not None:
+    # Display captured image
+    st.image(captured_image, caption="Captured Image", channels="RGB")
+
+    # Save the captured image locally
+    save_path = "captured_image.jpg"
+    cv2.imwrite(save_path, cv2.cvtColor(captured_image, cv2.COLOR_RGB2BGR))
+    st.success(f"Image saved as {save_path}")
